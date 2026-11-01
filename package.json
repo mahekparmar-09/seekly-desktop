@@ -1,0 +1,64 @@
+{
+  "name": "seekly-desktop",
+  "version": "1.0.0",
+  "description": "Seekly — Fast, lightweight, local-first Windows desktop search launcher",
+  "main": "electron/main.cjs",
+  "author": "Seekly Team",
+  "license": "MIT",
+  "scripts": {
+    "dev:renderer": "vite",
+    "build:renderer": "vite build",
+    "dev:electron": "wait-on tcp:5173 && electron .",
+    "dev": "concurrently -k \"npm run dev:renderer\" \"npm run dev:electron\"",
+    "start": "electron .",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "test": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run",
+    "test:watch": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs",
+    "dist": "npm run build:renderer && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "chokidar": "^4.0.3",
+    "lucide-react": "^1.16.0",
+    "mammoth": "^1.9.0",
+    "pdf-parse": "^1.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "vite": "^6.1.0",
+    "vitest": "^3.0.5",
+    "wait-on": "^8.0.2"
+  },
+  "build": {
+    "appId": "com.seekly.app",
+    "productName": "Seekly",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "sign": null,
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

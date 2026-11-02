@@ -36,6 +36,7 @@
     "electron-builder": "^25.1.8",
     "jimp": "^1.6.1",
     "png-to-ico": "^3.0.2",
+    "rcedit": "^5.0.2",
     "vite": "^6.1.0",
     "vitest": "^3.0.5",
     "wait-on": "^8.0.2"
@@ -43,7 +44,7 @@
   "build": {
     "appId": "com.seekly.app",
     "productName": "Seekly",
-    "icon": "build/icon.ico",
+    "icon": "assets/branding/seekly-icon.ico",
     "directories": {
       "output": "release"
     },
@@ -56,7 +57,7 @@
       "target": [
         "nsis"
       ],
-      "icon": "build/icon.ico",
+      "icon": "assets/branding/seekly-icon.ico",
       "sign": null,
       "signAndEditExecutable": false
     },

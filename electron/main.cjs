@@ -64,9 +64,7 @@ function toggleWindow() {
 }
 
 function createSearchWindow() {
-  const iconPath = fs.existsSync(path.join(__dirname, '../build/icon.ico'))
-    ? path.join(__dirname, '../build/icon.ico')
-    : path.join(__dirname, '../assets/branding/seekly-icon.ico');
+  const iconPath = path.join(__dirname, '../assets/branding/seekly-icon.ico');
 
   mainWindow = new BrowserWindow({
     width: 980,

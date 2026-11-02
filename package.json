@@ -15,7 +15,7 @@
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "test": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run",
     "test:watch": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs",
-    "dist": "npm run build:renderer && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis"
+    "dist": "npm run build:renderer && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis && node scripts/stampIcon.cjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",

@@ -72,7 +72,7 @@ function closeDatabase() {
   if (dbInstance) {
     try {
       dbInstance.close();
-    } catch (_err) {}
+    } catch (_err) { }
     dbInstance = null;
   }
 }
@@ -94,6 +94,32 @@ function runMigrations(db) {
   if (currentVersion < 1) {
     applyMigrationV1(db);
   }
+  if (currentVersion < 2) {
+    applyMigrationV2(db);
+  }
+}
+
+function applyMigrationV2(db) {
+  const transaction = db.transaction(() => {
+    // Clear out old extracted document content that had mashed-together words
+    db.prepare('DELETE FROM document_content').run();
+    db.prepare('DELETE FROM document_content_fts').run();
+
+    // Reset content_status of all documents to 'pending' so they are cleanly re-extracted with proper spacing
+    db.prepare(`
+      UPDATE files 
+      SET content_status = 'pending', content_fingerprint = null 
+      WHERE extension IN (
+        '.pdf', '.docx', '.doc', '.txt', '.md', '.markdown', '.csv',
+        '.json', '.log', '.rtf', '.html', '.htm', '.xml', '.yaml', '.yml',
+        '.ini', '.env', '.sql'
+      )
+    `).run();
+
+    db.prepare('INSERT INTO schema_versions (version, applied_at) VALUES (2, ?)').run(Date.now());
+  });
+
+  transaction();
 }
 
 function applyMigrationV1(db) {
@@ -258,6 +284,62 @@ const fileDao = {
     trans();
   },
 
+  insertDocumentPages(db, fileId, pages, name, fingerprint = null) {
+    const trans = db.transaction(() => {
+      const insertDoc = db.prepare(`
+        INSERT INTO document_content (file_id, page_number, content, created_at)
+        VALUES (?, ?, ?, ?)
+      `);
+      const insertFts = db.prepare(`
+        INSERT INTO document_content_fts (file_id, page_number, name, content)
+        VALUES (?, ?, ?, ?)
+      `);
+
+      for (const page of pages) {
+        insertDoc.run(fileId, page.pageNumber, page.text, Date.now());
+        insertFts.run(fileId, page.pageNumber, name, page.text);
+      }
+
+      db.prepare(`
+        UPDATE files 
+        SET content_status = 'indexed', content_fingerprint = COALESCE(?, content_fingerprint), indexed_at = ?
+        WHERE id = ?
+      `).run(fingerprint, Date.now(), fileId);
+    });
+
+    trans();
+  },
+
+  purgeJunkRecords(db) {
+    const trans = db.transaction(() => {
+      const junkFiles = db.prepare(`
+        SELECT id FROM files 
+        WHERE path LIKE '%\\node_modules\\%' 
+           OR path LIKE '%/node_modules/%'
+           OR path LIKE '%\\.git\\%'
+           OR path LIKE '%/.git/%'
+           OR path LIKE '%\\AppData\\%'
+           OR path LIKE '%/.cache/%'
+           OR path LIKE '%\\.cache\\%'
+      `).all();
+
+      if (junkFiles.length > 0) {
+        const ids = junkFiles.map((f) => f.id);
+        const chunkSize = 400;
+        for (let i = 0; i < ids.length; i += chunkSize) {
+          const slice = ids.slice(i, i + chunkSize);
+          const placeholders = slice.map(() => '?').join(',');
+          db.prepare(`DELETE FROM document_content WHERE file_id IN (${placeholders})`).run(...slice);
+          db.prepare(`DELETE FROM document_content_fts WHERE file_id IN (${placeholders})`).run(...slice);
+          db.prepare(`DELETE FROM favorites WHERE file_id IN (${placeholders})`).run(...slice);
+          db.prepare(`DELETE FROM files WHERE id IN (${placeholders})`).run(...slice);
+        }
+      }
+    });
+
+    trans();
+  },
+
   deleteDocumentContent(db, fileId) {
     const trans = db.transaction(() => {
       db.prepare('DELETE FROM document_content WHERE file_id = ?').run(fileId);
@@ -279,7 +361,11 @@ const fileDao = {
     const totalFiles = db.prepare('SELECT COUNT(*) as count FROM files').get()?.count || 0;
     const totalDocuments = db.prepare(`
       SELECT COUNT(*) as count FROM files 
-      WHERE extension IN ('.pdf', '.docx', '.txt')
+      WHERE extension IN (
+        '.pdf', '.docx', '.doc', '.txt', '.md', '.markdown', '.csv',
+        '.json', '.log', '.rtf', '.html', '.htm', '.xml', '.yaml', '.yml',
+        '.ini', '.env', '.sql'
+      )
     `).get()?.count || 0;
     const extractedDocuments = db.prepare(`
       SELECT COUNT(DISTINCT file_id) as count FROM document_content

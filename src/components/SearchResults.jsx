@@ -14,7 +14,7 @@ export default function SearchResults({
   // Auto-scroll selected item into view
   useEffect(() => {
     if (containerRef.current) {
-      const selectedEl = containerRef.current.querySelector('.search-result-card.selected');
+      const selectedEl = containerRef.current.querySelector('.file-card.selected, .search-result-card.selected');
       if (selectedEl) {
         selectedEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }
@@ -22,7 +22,7 @@ export default function SearchResults({
   }, [selectedIndex]);
 
   return (
-    <div className="search-results-list" ref={containerRef}>
+    <div className="results-scroll-container" ref={containerRef}>
       {results.map((item, idx) => (
         <SearchResultItem
           key={item.id}

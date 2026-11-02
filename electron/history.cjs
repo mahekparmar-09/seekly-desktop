@@ -29,7 +29,7 @@ function recordSearch(query, searchMode = 'both', filterData = null, customDb = 
   const db = customDb || getDatabase();
 
   // Check last inserted search to avoid rapid duplicate records
-  const last = db.prepare('SELECT id, query FROM recent_searches ORDER BY searched_at DESC LIMIT 1').get();
+  const last = db.prepare('SELECT id, query FROM recent_searches ORDER BY searched_at DESC, id DESC LIMIT 1').get();
   if (last && last.query.toLowerCase() === trimmed.toLowerCase()) {
     // Update timestamp instead of adding duplicate
     db.prepare('UPDATE recent_searches SET searched_at = ? WHERE id = ?').run(Date.now(), last.id);
@@ -48,11 +48,11 @@ function recordSearch(query, searchMode = 'both', filterData = null, customDb = 
     Date.now()
   );
 
-  // Keep history table capped at top 50 items
+  // Keep history table capped at top 50 items efficiently
   db.prepare(`
     DELETE FROM recent_searches 
-    WHERE id NOT IN (
-      SELECT id FROM recent_searches ORDER BY searched_at DESC LIMIT 50
+    WHERE id IN (
+      SELECT id FROM recent_searches ORDER BY searched_at DESC, id DESC LIMIT -1 OFFSET 50
     )
   `).run();
 
@@ -68,7 +68,7 @@ function getRecentSearches(limit = 10, customDb = null) {
   const db = customDb || getDatabase();
   return db.prepare(`
     SELECT * FROM recent_searches 
-    ORDER BY searched_at DESC 
+    ORDER BY searched_at DESC, id DESC 
     LIMIT ?
   `).all(limit);
 }

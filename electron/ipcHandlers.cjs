@@ -1,6 +1,6 @@
-const { ipcMain, dialog } = require('electron');
+const { ipcMain, dialog, app } = require('electron');
 const { getDatabase, fileDao } = require('./database.cjs');
-const { search } = require('./search.cjs');
+const { initSearchPool, searchInWorker, terminateWorker } = require('./searchPool.cjs');
 const { getIndexer } = require('./indexer.cjs');
 const { getDocumentIndexer } = require('./documentIndexer.cjs');
 const { getFileWatcher } = require('./fileWatcher.cjs');
@@ -18,20 +18,38 @@ const {
   removeExcludedFolder
 } = require('./privacy.cjs');
 
+// Terminate worker pool gracefully on quit
+app.on('before-quit', () => {
+  terminateWorker();
+});
+
+let handlersInitialized = false;
+let currentMainWindow = null;
+
 /**
  * Setup validated IPC handlers for renderer communication
  * @param {import('electron').BrowserWindow} mainWindow
  */
 function setupIpcHandlers(mainWindow) {
+  currentMainWindow = mainWindow;
+  if (handlersInitialized) {
+    return;
+  }
+  handlersInitialized = true;
+
   const db = getDatabase();
   const indexer = getIndexer(db);
   const docIndexer = getDocumentIndexer(db);
   const fileWatcher = getFileWatcher(db);
 
+  // Initialize the search worker pool with the real database path
+  // (must happen after getDatabase() so the DB file exists)
+  initSearchPool(db.name);
+
   // Wire progress event forwarding to renderer
   const broadcastProgress = (data) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('indexer:update', data);
+    if (currentMainWindow && !currentMainWindow.isDestroyed()) {
+      currentMainWindow.webContents.send('indexer:update', data);
     }
   };
 
@@ -41,15 +59,18 @@ function setupIpcHandlers(mainWindow) {
   // Start background indexing and filesystem watching on launch
   setTimeout(() => {
     indexer.startIndexing().then(() => {
-      docIndexer.processPendingDocuments();
+      // Delay document content extraction so startup and initial searches are instantaneous
+      setTimeout(() => {
+        docIndexer.processPendingDocuments().catch(console.error);
+      }, 3000);
       fileWatcher.start();
     }).catch(console.error);
-  }, 1000);
+  }, 1500);
 
   // Folder picker dialog
   ipcMain.handle('dialog:selectFolder', async () => {
-    if (!mainWindow) return null;
-    const result = await dialog.showOpenDialog(mainWindow, {
+    if (!currentMainWindow || currentMainWindow.isDestroyed()) return null;
+    const result = await dialog.showOpenDialog(currentMainWindow, {
       properties: ['openDirectory'],
       title: 'Select Folder to Exclude from Seekly Index'
     });
@@ -59,7 +80,9 @@ function setupIpcHandlers(mainWindow) {
     return result.filePaths[0];
   });
 
-  // Search
+  let historyDebounceTimer = null;
+
+  // Search — query is executed in the worker thread (never blocks main process)
   ipcMain.handle('search:query', async (_event, params) => {
     const query = params?.query || '';
     const options = {
@@ -74,17 +97,30 @@ function setupIpcHandlers(mainWindow) {
       offset: params?.offset || 0
     };
 
-    const res = search(query, options, db);
+    // Run query in worker thread — never blocks main process / UI
+    const res = await searchInWorker(query, options);
 
-    // Record in search history if non-empty query
-    if (query && query.length >= 2) {
-      recordSearch(query, options.mode, options, db);
+    // Debounce recording in search history (800ms) to prevent SQLite lock contention
+    if (query && query.trim().length >= 2) {
+      if (historyDebounceTimer) clearTimeout(historyDebounceTimer);
+      historyDebounceTimer = setTimeout(() => {
+        try {
+          recordSearch(query.trim(), options.mode, options, db);
+        } catch (_e) {}
+      }, 800);
     }
 
     return res;
   });
 
   // History
+  ipcMain.handle('history:record', async (_event, data) => {
+    if (data?.query && data.query.trim().length >= 2) {
+      return recordSearch(data.query.trim(), data.mode || 'both', data.filterData || null, db);
+    }
+    return null;
+  });
+
   ipcMain.handle('history:get', async () => {
     return getRecentSearches(20, db);
   });

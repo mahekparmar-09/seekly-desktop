@@ -34,13 +34,13 @@ class FileWatcher {
     if (validTargets.length === 0) return;
 
     this.watcher = chokidar.watch(validTargets, {
-      ignored: /(^|[\/\\])\..|node_modules|\.git/, // Ignore hidden files and dot folders
+      ignored: /(^|[\/\\])(\..|node_modules|\.git|build|dist|out|target|\.cache|AppData|System Volume Information|\$RECYCLE\.BIN)/i,
       persistent: true,
       ignoreInitial: true, // Initial scan is handled by Indexer
-      depth: 6,
+      depth: 5,
       awaitWriteFinish: {
-        stabilityThreshold: 1000,
-        pollInterval: 100
+        stabilityThreshold: 1200,
+        pollInterval: 150
       }
     });
 
@@ -49,7 +49,11 @@ class FileWatcher {
       .on('change', (filePath) => this.queueEvent('change', filePath))
       .on('unlink', (filePath) => this.queueEvent('unlink', filePath))
       .on('unlinkDir', (dirPath) => this.queueEvent('unlinkDir', dirPath))
-      .on('error', (err) => console.warn('[FileWatcher] Watch error:', err.message));
+      .on('error', (err) => {
+        if (err && err.code !== 'EPERM') {
+          console.warn('[FileWatcher] Watch error:', err.message);
+        }
+      });
 
     this.isWatching = true;
   }

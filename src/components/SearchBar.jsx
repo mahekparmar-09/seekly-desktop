@@ -10,38 +10,43 @@ const SearchBar = forwardRef(({
   onKeyDown
 }, ref) => {
   return (
-    <div className="search-bar-container">
-      <div className="search-input-wrapper">
-        <Search className="search-icon" size={20} />
-        <input
-          ref={ref}
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder="Search files, applications, or document content..."
-          className="search-input"
-          autoFocus
-          spellCheck={false}
-        />
+    <div className="search-bar-shell">
+      <div className="search-icon-slot">
+        <Search size={18} className="search-field-icon" />
+      </div>
+
+      <input
+        ref={ref}
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder="Search files, apps, folders or document text..."
+        className="search-field-input"
+        autoFocus
+        spellCheck={false}
+      />
+
+      <div className="search-tools-slot no-drag">
         {query && (
           <button
             type="button"
             onClick={onClear}
-            className="clear-btn"
-            title="Clear search"
+            className="search-tool-btn clear-btn"
+            title="Clear search (Esc)"
           >
-            <X size={16} />
+            <X size={15} />
           </button>
         )}
+
         <button
           type="button"
           onClick={toggleFilterPanel}
-          className={`filter-toggle-btn ${isFilterActive ? 'active' : ''}`}
+          className={`search-tool-btn filter-toggle-btn ${isFilterActive ? 'active' : ''}`}
           title="Toggle advanced filters"
         >
-          <SlidersHorizontal size={18} />
-          {isFilterActive && <span className="filter-badge-dot" />}
+          <SlidersHorizontal size={16} />
+          {isFilterActive && <span className="filter-active-dot" />}
         </button>
       </div>
     </div>

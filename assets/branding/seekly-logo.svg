@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 84" width="380" height="84">
+  <defs>
+    <!-- Background Acrylic Squircle Gradient -->
+    <linearGradient id="logoBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141E33" />
+      <stop offset="100%" stop-color="#0E1626" />
+    </linearGradient>
+
+    <!-- Squircle Border Highlight -->
+    <linearGradient id="logoBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#2878F0" stop-opacity="0.15" />
+    </linearGradient>
+
+    <!-- Optical Lens Ring Gradient -->
+    <linearGradient id="logoLens" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#56CCF2" />
+      <stop offset="50%" stop-color="#2F80ED" />
+      <stop offset="100%" stop-color="#1D4ED8" />
+    </linearGradient>
+
+    <!-- Handle Beam -->
+    <linearGradient id="logoBeam" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#1E40AF" />
+    </linearGradient>
+
+    <!-- Focal Star Glow -->
+    <linearGradient id="logoStar" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#7DD3FC" />
+    </linearGradient>
+  </defs>
+
+  <!-- === Left Graphical Emblem (Scaled to 64x64 at 8, 10) === -->
+  <g transform="translate(8, 10)">
+    <!-- Base Squircle -->
+    <rect x="0" y="0" width="64" height="64" rx="16" fill="url(#logoBgGrad)" stroke="url(#logoBorder)" stroke-width="1.2" />
+
+    <!-- Document Card Graphic inside -->
+    <rect x="18" y="16" width="22" height="26" rx="3.5" fill="#1E293B" stroke="#334155" stroke-width="1" />
+    <rect x="23" y="21" width="22" height="26" rx="3.5" fill="#38BDF8" fill-opacity="0.18" stroke="#38BDF8" stroke-opacity="0.5" stroke-width="1" />
+    <line x1="27" y1="27" x2="38" y2="27" stroke="#7DD3FC" stroke-width="1.5" stroke-linecap="round" />
+    <line x1="27" y1="32" x2="41" y2="32" stroke="#94A3B8" stroke-width="1.2" stroke-linecap="round" />
+    <line x1="27" y1="37" x2="36" y2="37" stroke="#94A3B8" stroke-width="1.2" stroke-linecap="round" />
+
+    <!-- Optical Lens Ring -->
+    <circle cx="31" cy="31" r="16.5" fill="none" stroke="url(#logoLens)" stroke-width="4.5" stroke-linecap="round" />
+
+    <!-- Handle Vector -->
+    <path d="M43 43 L54 54" stroke="url(#logoBeam)" stroke-width="5" stroke-linecap="round" />
+
+    <!-- Discovery Sparkle -->
+    <g transform="translate(42, 20)">
+      <path d="M0 -5 Q0 0 5 0 Q0 0 0 5 Q0 0 -5 0 Q0 0 0 -5 Z" fill="url(#logoStar)" />
+    </g>
+  </g>
+
+  <!-- === Right Wordmark Typography === -->
+  <g transform="translate(86, 20)">
+    <!-- "Seek" in soft white -->
+    <text x="0" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif" font-size="34" font-weight="700" fill="#F8FAFC" letter-spacing="-0.5">Seek<tspan fill="#38BDF8" font-weight="600">ly</tspan></text>
+
+    <!-- Version tag badge -->
+    <rect x="122" y="12" width="38" height="18" rx="5" fill="#1E293B" stroke="#334155" stroke-width="0.8" />
+    <text x="141" y="24.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="9.5" font-weight="600" fill="#94A3B8" text-anchor="middle">v1.0</text>
+
+    <!-- Tagline below -->
+    <text x="1" y="49" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="12" font-weight="400" fill="#94A3B8" letter-spacing="0.2">Search less. Find more.</text>
+  </g>
+</svg>
+

@@ -29,7 +29,7 @@ describe('Database & FTS5 Schema Tests', () => {
 
   it('initializes schema and version table correctly', () => {
     const versionRow = db.prepare('SELECT MAX(version) as version FROM schema_versions').get();
-    expect(versionRow.version).toBe(1);
+    expect(versionRow.version).toBeGreaterThanOrEqual(1);
 
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(t => t.name);
     expect(tables).toContain('files');

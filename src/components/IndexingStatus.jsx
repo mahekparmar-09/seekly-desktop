@@ -1,5 +1,16 @@
 import React from 'react';
-import { Database, Play, Pause, RefreshCw, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import {
+  Play,
+  Pause,
+  RefreshCw,
+  CheckCircle2,
+  AlertTriangle,
+  Loader2,
+  Files,
+  FileText,
+  CheckCheck,
+  AlertOctagon
+} from 'lucide-react';
 
 export default function IndexingStatus({
   status = {},
@@ -18,31 +29,33 @@ export default function IndexingStatus({
     isPaused = false
   } = status;
 
-  const isIndexing = statusText.toLowerCase().includes('indexing') || statusText.toLowerCase().includes('extracting') || statusText.toLowerCase().includes('preparing');
+  const isIndexing = statusText.toLowerCase().includes('indexing') || 
+                     statusText.toLowerCase().includes('extracting') || 
+                     statusText.toLowerCase().includes('preparing');
 
   return (
-    <div className="indexing-status-panel">
-      <div className="indexing-status-header">
-        <div className="indexing-status-badge">
+    <div className="fluent-panel indexing-panel">
+      <div className="panel-header-row">
+        <div className="indexing-status-indicator">
           {isIndexing ? (
-            <Loader2 size={16} className="text-teal spin" />
+            <Loader2 size={16} className="text-secondary-accent spin" />
           ) : failedDocuments > 0 ? (
             <AlertTriangle size={16} className="text-warning" />
           ) : (
             <CheckCircle2 size={16} className="text-success" />
           )}
-          <span className="indexing-status-text">{statusText}</span>
+          <span className="indexing-status-headline">{statusText}</span>
         </div>
 
-        <div className="indexing-actions">
+        <div className="indexing-actions-cluster no-drag">
           {isIndexing && !isPaused && (
             <button
               type="button"
               onClick={onPause}
-              className="idx-btn"
+              className="fluent-btn-secondary"
               title="Pause background indexing"
             >
-              <Pause size={14} />
+              <Pause size={13} />
               <span>Pause</span>
             </button>
           )}
@@ -51,10 +64,10 @@ export default function IndexingStatus({
             <button
               type="button"
               onClick={onResume}
-              className="idx-btn active"
-              title="Resume indexing"
+              className="fluent-btn-primary"
+              title="Resume background indexing"
             >
-              <Play size={14} />
+              <Play size={13} />
               <span>Resume</span>
             </button>
           )}
@@ -62,48 +75,64 @@ export default function IndexingStatus({
           <button
             type="button"
             onClick={onRebuild}
-            className="idx-btn"
-            title="Rebuild entire local index from scratch"
+            className="fluent-btn-secondary"
+            title="Rebuild index from scratch"
           >
-            <RefreshCw size={14} />
-            <span>Rebuild Index</span>
+            <RefreshCw size={13} />
+            <span>Rebuild</span>
           </button>
         </div>
       </div>
 
       {isIndexing && (
-        <div className="indexing-progress-bar-wrapper">
+        <div className="fluent-progress-track">
           <div
-            className={`indexing-progress-bar ${progress === -1 ? 'indeterminate' : ''}`}
+            className={`fluent-progress-bar ${progress === -1 ? 'indeterminate' : ''}`}
             style={{ width: progress >= 0 ? `${progress}%` : '50%' }}
           />
         </div>
       )}
 
-      <div className="indexing-metrics-grid">
-        <div className="metric-card">
-          <span className="metric-label">Total Files</span>
-          <span className="metric-value">{totalFiles.toLocaleString()}</span>
+      {/* Metrics Grid */}
+      <div className="metrics-four-grid">
+        <div className="metric-box">
+          <div className="metric-box-header">
+            <Files size={13} className="text-muted" />
+            <span className="metric-box-label">Files Catalogued</span>
+          </div>
+          <span className="metric-box-val">{totalFiles.toLocaleString()}</span>
         </div>
-        <div className="metric-card">
-          <span className="metric-label">Documents</span>
-          <span className="metric-value">{totalDocuments.toLocaleString()}</span>
+
+        <div className="metric-box">
+          <div className="metric-box-header">
+            <FileText size={13} className="text-muted" />
+            <span className="metric-box-label">Documents Found</span>
+          </div>
+          <span className="metric-box-val">{totalDocuments.toLocaleString()}</span>
         </div>
-        <div className="metric-card">
-          <span className="metric-label">Content Indexed</span>
-          <span className="metric-value text-teal">{extractedDocuments.toLocaleString()}</span>
+
+        <div className="metric-box">
+          <div className="metric-box-header">
+            <CheckCheck size={13} className="text-secondary-accent" />
+            <span className="metric-box-label">Text Extracted</span>
+          </div>
+          <span className="metric-box-val text-secondary-accent">{extractedDocuments.toLocaleString()}</span>
         </div>
-        <div className="metric-card">
-          <span className="metric-label">Failed Extractions</span>
-          <span className={`metric-value ${failedDocuments > 0 ? 'text-warning' : 'text-muted'}`}>
+
+        <div className="metric-box">
+          <div className="metric-box-header">
+            <AlertOctagon size={13} className={failedDocuments > 0 ? 'text-warning' : 'text-muted'} />
+            <span className="metric-box-label">Extraction Errors</span>
+          </div>
+          <span className={`metric-box-val ${failedDocuments > 0 ? 'text-warning' : 'text-muted'}`}>
             {failedDocuments.toLocaleString()}
           </span>
         </div>
       </div>
 
       {lastIndexedAt && (
-        <div className="last-indexed-footer">
-          Last index update: {new Date(lastIndexedAt).toLocaleTimeString()}
+        <div className="indexing-footer-meta">
+          <span>Catalog last synced at {new Date(lastIndexedAt).toLocaleTimeString()}</span>
         </div>
       )}
     </div>

@@ -2,8 +2,10 @@ const fs = require('fs');
 const path = require('path');
 const { fileDao, getDatabase } = require('./database.cjs');
 
-// Maximum file size for content extraction: 25 MB
-const MAX_DOCUMENT_SIZE_BYTES = 25 * 1024 * 1024;
+// Maximum file size for content extraction: 12 MB
+const MAX_DOCUMENT_SIZE_BYTES = 12 * 1024 * 1024;
+// Maximum pages to extract per PDF for snappy indexing
+const MAX_PDF_PAGES = 30;
 
 class DocumentIndexer {
   constructor(db = null) {
@@ -35,7 +37,7 @@ class DocumentIndexer {
   }
 
   /**
-   * Extract text from PDF with page preservation
+   * Extract text from PDF with page preservation and intelligent spacing
    */
   async extractPdf(filePath) {
     const pdfParse = require('pdf-parse');
@@ -44,23 +46,47 @@ class DocumentIndexer {
     const pages = [];
     let currentPage = 1;
 
-    // Custom pagerender callback to capture text per page
+    // Custom pagerender callback to capture text per page with gap detection
     const renderPage = (pageData) => {
+      if (pages.length >= MAX_PDF_PAGES) {
+        return Promise.resolve('');
+      }
+
       return pageData.getTextContent().then((textContent) => {
         let text = '';
+        let lastX = null;
         let lastY = null;
+        let lastW = null;
+
         for (const item of textContent.items) {
-          if (lastY === item.transform[5] || !lastY) {
-            text += item.str;
-          } else {
-            text += '\n' + item.str;
+          const x = item.transform[4];
+          const y = item.transform[5];
+          const w = item.width || 0;
+          const str = item.str || '';
+
+          if (!str && !item.hasEOL) continue;
+
+          // Vertical displacement > 2.5 points indicates a newline
+          if (lastY !== null && Math.abs(y - lastY) > 2.5) {
+            if (!text.endsWith('\n')) text += '\n';
+          } else if (lastX !== null && lastW !== null && x > (lastX + lastW + 1.2)) {
+            // Horizontal gap between items indicates a space
+            if (!text.endsWith(' ') && !text.endsWith('\n')) text += ' ';
           }
-          lastY = item.transform[5];
+
+          text += str;
+          if (item.hasEOL && !text.endsWith('\n')) {
+            text += '\n';
+          }
+
+          lastX = x;
+          lastY = y;
+          lastW = w;
         }
 
-        const pageNum = pageData.pageIndex ? pageData.pageIndex + 1 : currentPage;
+        const pageNum = pageData.pageIndex !== undefined ? pageData.pageIndex + 1 : currentPage;
         currentPage++;
-        if (text.trim()) {
+        if (text.trim() && pages.length < MAX_PDF_PAGES) {
           pages.push({ pageNumber: pageNum, text: text.trim() });
         }
         return text;
@@ -89,7 +115,76 @@ class DocumentIndexer {
   }
 
   /**
-   * Extract text from TXT with encoding safety
+   * Extract text from legacy DOC format
+   */
+  async extractDoc(filePath) {
+    // 1. Try mammoth first
+    try {
+      const mammoth = require('mammoth');
+      const result = await mammoth.extractRawText({ path: filePath });
+      const text = (result.value || '').trim();
+      if (text) return [{ pageNumber: null, text }];
+    } catch (_e) {}
+
+    // 2. Binary stream extraction: look for printable ASCII text blocks
+    try {
+      const buffer = await fs.promises.readFile(filePath);
+      const str = buffer.toString('latin1');
+      const matches = str.match(/[\x20-\x7E\r\n\t]{4,}/g) || [];
+      const cleaned = matches
+        .filter((s) => !/^[0-9a-fA-F\s]+$/.test(s) && !/^\W+$/.test(s))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (cleaned.length > 30) {
+        return [{ pageNumber: null, text: cleaned.slice(0, 250000) }];
+      }
+    } catch (_e) {}
+    return [];
+  }
+
+  /**
+   * Extract text from RTF documents
+   */
+  async extractRtf(filePath) {
+    const buffer = await fs.promises.readFile(filePath);
+    const content = buffer.toString('utf8');
+    const cleaned = content
+      .replace(/\\par[d]?/g, '\n')
+      .replace(/\\tab/g, '\t')
+      .replace(/\\'[0-9a-fA-F]{2}/g, '')
+      .replace(/\\[a-zA-Z]+(-?[0-9]+)? ?/g, '')
+      .replace(/[{}]/g, '')
+      .replace(/\r\n/g, '\n')
+      .replace(/\n{2,}/g, '\n')
+      .trim();
+    if (!cleaned) return [];
+    return [{ pageNumber: null, text: cleaned.slice(0, 250000) }];
+  }
+
+  /**
+   * Extract text from HTML documents
+   */
+  async extractHtml(filePath) {
+    const buffer = await fs.promises.readFile(filePath);
+    const content = buffer.toString('utf8');
+    const cleaned = content
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!cleaned) return [];
+    return [{ pageNumber: null, text: cleaned.slice(0, 250000) }];
+  }
+
+  /**
+   * Extract text from TXT, MD, CSV, JSON, LOG, XML, YAML and source files
    */
   async extractTxt(filePath) {
     const buffer = await fs.promises.readFile(filePath);
@@ -101,6 +196,9 @@ class DocumentIndexer {
     }
     content = content.trim();
     if (!content) return [];
+    if (content.length > 250000) {
+      content = content.slice(0, 250000);
+    }
     return [{ pageNumber: null, text: content }];
   }
 
@@ -108,16 +206,50 @@ class DocumentIndexer {
    * Extract text from a single file based on its extension
    */
   async extractFile(filePath, extension) {
-    const ext = extension.toLowerCase();
+    const ext = (extension || '').toLowerCase();
     switch (ext) {
       case '.pdf':
         return await this.extractPdf(filePath);
       case '.docx':
         return await this.extractDocx(filePath);
+      case '.doc':
+        return await this.extractDoc(filePath);
+      case '.rtf':
+        return await this.extractRtf(filePath);
+      case '.html':
+      case '.htm':
+        return await this.extractHtml(filePath);
       case '.txt':
+      case '.md':
+      case '.markdown':
+      case '.csv':
+      case '.json':
+      case '.log':
+      case '.xml':
+      case '.yaml':
+      case '.yml':
+      case '.ini':
+      case '.env':
+      case '.sql':
         return await this.extractTxt(filePath);
       default:
         throw new Error(`Unsupported document extension: ${ext}`);
+    }
+  }
+
+  /**
+   * Extract text with a strict timeout to prevent any document from locking the process
+   */
+  async extractFileWithTimeout(filePath, extension, timeoutMs = 4500) {
+    const extractPromise = this.extractFile(filePath, extension);
+    let timer;
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Extraction timed out')), timeoutMs);
+    });
+    try {
+      return await Promise.race([extractPromise, timeoutPromise]);
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -171,14 +303,18 @@ class DocumentIndexer {
             // Delete previous document content if any
             fileDao.deleteDocumentContent(db, file.id);
 
-            const pages = await this.extractFile(file.path, file.extension);
+            const pages = await this.extractFileWithTimeout(file.path, file.extension);
             const fingerprint = `${file.size}_${file.modified_at}`;
 
-            if (pages.length > 0) {
-              for (const page of pages) {
-                fileDao.insertDocumentContent(db, file.id, page.pageNumber, page.text, file.name);
+            if (pages && pages.length > 0) {
+              if (typeof fileDao.insertDocumentPages === 'function') {
+                fileDao.insertDocumentPages(db, file.id, pages, file.name, fingerprint);
+              } else {
+                for (const page of pages) {
+                  fileDao.insertDocumentContent(db, file.id, page.pageNumber, page.text, file.name);
+                }
+                fileDao.updateContentStatus(db, file.id, 'indexed', fingerprint);
               }
-              fileDao.updateContentStatus(db, file.id, 'indexed', fingerprint);
             } else {
               // File is empty or scanned image PDF
               fileDao.updateContentStatus(db, file.id, 'unsupported', fingerprint);
@@ -188,8 +324,8 @@ class DocumentIndexer {
             fileDao.updateContentStatus(db, file.id, 'failed', `err_${Date.now()}`);
           }
 
-          // Small delay to ensure zero UI lag
-          await new Promise((r) => setTimeout(r, 30));
+          // Yield to event loop between documents to guarantee 100% responsiveness
+          await new Promise((r) => setTimeout(r, 60));
         }
       }
 

@@ -68,7 +68,9 @@ dist-ssr/
 
 # Electron Builder release output
 release/
-build/
+# Exclude build artifacts but keep icon assets
+build/*.yml
+build/*.yaml
 *.exe
 *.blockmap
 

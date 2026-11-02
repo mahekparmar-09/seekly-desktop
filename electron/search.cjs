@@ -1,22 +1,58 @@
 const { getDatabase } = require('./database.cjs');
 
+// Common English stopwords to avoid freezing FTS with table-scanning prefix wildcards
+const STOPWORDS = new Set([
+  'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are', 'as', 'at',
+  'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by',
+  'can', 'did', 'do', 'does', 'doing', 'down', 'during',
+  'each', 'few', 'for', 'from', 'further',
+  'had', 'has', 'have', 'having', 'he', 'her', 'here', 'hers', 'herself', 'him', 'himself', 'his', 'how',
+  'i', 'if', 'in', 'into', 'is', 'it', 'its', 'itself',
+  'just', 'me', 'more', 'most', 'my', 'myself',
+  'no', 'nor', 'not', 'now', 'of', 'off', 'on', 'once', 'only', 'or', 'other', 'our', 'ours', 'ourselves', 'out', 'over', 'own',
+  'same', 'she', 'should', 'so', 'some', 'such',
+  'than', 'that', 'the', 'their', 'theirs', 'them', 'themselves', 'then', 'there', 'these', 'they', 'this', 'those', 'through', 'to', 'too',
+  'under', 'until', 'up', 'very', 'was', 'we', 'were', 'what', 'when', 'where', 'which', 'while', 'who', 'whom', 'why', 'with', 'would', 'you', 'your', 'yours'
+]);
+
 /**
- * Sanitize query string for safe SQLite FTS5 MATCH syntax
+ * Build safe and intelligent FTS queries for prefix and ranking
  * @param {string} query
- * @returns {string}
+ * @returns {{ andQuery: string, orQuery: string }}
  */
-function sanitizeFtsQuery(query) {
-  if (!query || typeof query !== 'string') return '';
-  // Split into alphanumeric/word tokens and format for prefix matching
+function buildFtsQueries(query) {
+  if (!query || typeof query !== 'string') return { andQuery: '', orQuery: '' };
   const tokens = query
     .trim()
     .replace(/[^\p{L}\p{N}_]+/gu, ' ')
     .split(/\s+/)
     .filter((t) => t.length > 0);
 
-  if (tokens.length === 0) return '';
-  // Each token gets prefix wildcard for real-time typing match
-  return tokens.map((t) => `"${t}"*`).join(' AND ');
+  if (tokens.length === 0) return { andQuery: '', orQuery: '' };
+
+  const substantive = tokens.filter((t) => !STOPWORDS.has(t.toLowerCase()) && t.length >= 2);
+  const activeTokens = substantive.length > 0 ? substantive : tokens;
+
+  // Never use wildcard '*' on stopwords or tokens < 3 chars to prevent slow table scans
+  const formatToken = (t) => {
+    const isStop = STOPWORDS.has(t.toLowerCase());
+    if (isStop || t.length < 3) return `"${t}"`;
+    return `"${t}"*`;
+  };
+
+  const andQuery = activeTokens.map(formatToken).join(' AND ');
+  const orQuery = activeTokens.length > 1 ? activeTokens.map(formatToken).join(' OR ') : '';
+
+  return { andQuery, orQuery };
+}
+
+/**
+ * Sanitize query string for safe SQLite FTS5 MATCH syntax
+ * @param {string} query
+ * @returns {string}
+ */
+function sanitizeFtsQuery(query) {
+  return buildFtsQueries(query).andQuery;
 }
 
 /**
@@ -75,8 +111,12 @@ function search(rawQuery, options = {}, customDb = null) {
 
     // Apply Filter: Category
     if (options.category && options.category !== 'all') {
-      sql += ` AND f.category = ?`;
-      params.push(options.category);
+      if (options.category === 'folders') {
+        sql += ` AND f.type = 'folder'`;
+      } else {
+        sql += ` AND f.category = ?`;
+        params.push(options.category);
+      }
     }
 
     // Apply Filter: Modified Date
@@ -121,15 +161,30 @@ function search(rawQuery, options = {}, customDb = null) {
       params.push(`${options.location}%`);
     }
 
-    // Sorting (if not relevance)
+    // Sorting with prioritized ranking so matching folders/names are not truncated by LIMIT
     if (sortBy === 'name') {
-      sql += ` ORDER BY f.name COLLATE NOCASE ASC`;
+      sql += ` ORDER BY f.name COLLATE NOCASE ASC LIMIT 250`;
     } else if (sortBy === 'modified') {
-      sql += ` ORDER BY f.modified_at DESC`;
+      sql += ` ORDER BY f.modified_at DESC LIMIT 250`;
     } else if (sortBy === 'size') {
-      sql += ` ORDER BY f.size DESC`;
+      sql += ` ORDER BY f.size DESC LIMIT 250`;
     } else {
-      sql += ` LIMIT 150`; // Take top candidates for in-memory score ranking
+      if (query) {
+        sql += ` ORDER BY 
+          CASE 
+            WHEN LOWER(f.name) = LOWER(?) THEN 1
+            WHEN LOWER(f.name) LIKE ? THEN 2
+            WHEN LOWER(f.name) LIKE ? THEN 3
+            ELSE 4
+          END,
+          (f.type = 'folder') DESC,
+          (f.type = 'app') DESC,
+          f.modified_at DESC
+          LIMIT 250`;
+        params.push(query, `${query}%`, `%${query}%`);
+      } else {
+        sql += ` ORDER BY (f.type = 'folder') DESC, f.modified_at DESC LIMIT 250`;
+      }
     }
 
     try {
@@ -141,16 +196,18 @@ function search(rawQuery, options = {}, customDb = null) {
         if (nameLower === queryLower) {
           score += 1000; // Exact filename match
         } else if (nameLower.startsWith(queryLower)) {
-          score += 500; // Filename prefix
+          score += 600; // Filename prefix
         } else if (nameLower.includes(queryLower)) {
-          score += 250; // Filename substring
+          score += 350; // Filename substring
         } else {
           score += 50; // Path match
         }
 
-        // App boost
-        if (row.type === 'app') {
-          score += 80;
+        // Folder and App boost
+        if (row.type === 'folder') {
+          score += 150; // Ensure folders are prominently surfaced
+        } else if (row.type === 'app') {
+          score += 100;
         }
 
         resultsMap.set(row.id, {
@@ -168,16 +225,32 @@ function search(rawQuery, options = {}, customDb = null) {
   }
 
   // 2. FTS5 DOCUMENT CONTENT SEARCH (if mode is 'both' or 'content')
-  if ((mode === 'both' || mode === 'content') && query) {
-    const ftsQuery = sanitizeFtsQuery(query);
-    if (ftsQuery) {
+  // Skip FTS5 content search if the user explicitly filtered by folders, apps, or images
+  const isFolderFilter = options.fileType === 'folders' || options.category === 'folders';
+  const isAppFilter = options.fileType === 'apps' || options.category === 'applications';
+  const isImageFilter = options.fileType === 'images' || options.category === 'images';
+
+  // In 'both' mode, only run heavy FTS document content search if query has at least 3 characters.
+  // 1-2 character queries are intended for quick filename, folder, or application matching.
+  const isShortQuery = query.length < 3;
+  const shouldRunFts = (mode === 'content') || (mode === 'both' && !isShortQuery);
+
+  if (shouldRunFts && query && !isFolderFilter && !isAppFilter && !isImageFilter) {
+    const { andQuery, orQuery } = buildFtsQueries(query);
+    const queriesToRun = [];
+    if (andQuery) queriesToRun.push({ ftsQuery: andQuery, isAnd: true });
+    if (orQuery && orQuery !== andQuery) queriesToRun.push({ ftsQuery: orQuery, isAnd: false });
+
+    for (const { ftsQuery, isAnd } of queriesToRun) {
+      if (!isAnd && resultsMap.size >= 25) break;
+
       try {
-        const ftsSql = `
+        let ftsSql = `
           SELECT 
             fts.file_id,
             fts.page_number,
             fts.rank,
-            snippet(document_content_fts, 3, '<mark>', '</mark>', '...', 18) as snippet,
+            snippet(document_content_fts, -1, '<mark>', '</mark>', '...', 18) as snippet,
             f.name,
             f.path,
             f.type,
@@ -190,23 +263,45 @@ function search(rawQuery, options = {}, customDb = null) {
           JOIN files f ON f.id = fts.file_id
           LEFT JOIN favorites fav ON fav.file_id = f.id
           WHERE document_content_fts MATCH ?
-          ORDER BY fts.rank
-          LIMIT 60
+            AND f.type != 'folder'
         `;
+        const ftsParams = [ftsQuery];
 
-        const ftsRows = db.prepare(ftsSql).all(ftsQuery);
+        // Apply filters to FTS5 search as well
+        if (options.fileType && options.fileType !== 'all') {
+          const ext = options.fileType.startsWith('.') ? options.fileType : `.${options.fileType}`;
+          ftsSql += ` AND f.extension = ?`;
+          ftsParams.push(ext.toLowerCase());
+        }
+
+        if (options.category && options.category !== 'all') {
+          ftsSql += ` AND f.category = ?`;
+          ftsParams.push(options.category);
+        }
+
+        if (options.location && options.location !== 'all') {
+          ftsSql += ` AND f.path LIKE ?`;
+          ftsParams.push(`${options.location}%`);
+        }
+
+        ftsSql += ` ORDER BY fts.rank LIMIT 60`;
+
+        const ftsRows = db.prepare(ftsSql).all(...ftsParams);
 
         for (const row of ftsRows) {
           // If already in resultsMap (from filename match), enhance with snippet and boost score!
           if (resultsMap.has(row.file_id)) {
             const existing = resultsMap.get(row.file_id);
-            existing.score += 350; // Boost for matching both filename and content
-            existing.snippet = row.snippet;
-            existing.page_number = row.page_number;
+            existing.score += isAnd ? 400 : 200; // Boost for matching both filename and content
+            if (!existing.snippet) {
+              existing.snippet = row.snippet;
+              existing.page_number = row.page_number;
+            }
             existing.matchType = 'both';
           } else if (mode !== 'filename') {
             // New content match
-            const contentScore = Math.max(10, Math.round(180 - (row.rank || 0) * 10));
+            const baseBonus = isAnd ? 220 : 140;
+            const contentScore = Math.max(10, Math.round(baseBonus - (row.rank || 0) * 10));
             resultsMap.set(row.file_id, {
               id: row.file_id,
               name: row.name,
@@ -225,7 +320,7 @@ function search(rawQuery, options = {}, customDb = null) {
           }
         }
       } catch (err) {
-        console.error('[Search] FTS5 search error:', err);
+        console.error('[Search] FTS5 search error:', err.message);
       }
     }
   }
@@ -256,5 +351,7 @@ function search(rawQuery, options = {}, customDb = null) {
 
 module.exports = {
   search,
-  sanitizeFtsQuery
+  sanitizeFtsQuery,
+  buildFtsQueries,
+  STOPWORDS
 };

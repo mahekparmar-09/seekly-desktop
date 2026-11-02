@@ -1,6 +1,10 @@
+[![Download Seekly for Windows](https://img.shields.io/badge/Download-Seekly%20Setup%20v1.0.0-2878F0?style=for-the-badge&logo=windows)](https://github.com/YOUR_USERNAME/seekly-desktop/releases/latest/download/Seekly-Setup.exe)
+
 <div align="center">
 
-# ⚡ Seekly
+<img src="assets/branding/seekly-icon-128.png" alt="Seekly Logo" width="96" height="96" />
+
+# Seekly
 
 ### Ultra-Fast, Local-First Windows Desktop Search & Document Content Launcher
 

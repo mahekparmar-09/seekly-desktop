@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('seeklyAPI', {
   searchFiles: (params) => ipcRenderer.invoke('search:query', params),
   
   // History
+  recordSearch: (query, mode, filterData) => ipcRenderer.invoke('history:record', { query, mode, filterData }),
   getRecentSearches: () => ipcRenderer.invoke('history:get'),
   deleteRecentSearch: (id) => ipcRenderer.invoke('history:delete', id),
   clearRecentSearches: () => ipcRenderer.invoke('history:clear'),
@@ -32,7 +33,11 @@ contextBridge.exposeInMainWorld('seeklyAPI', {
   
   // Window controls
   hideWindow: () => ipcRenderer.invoke('window:hide'),
+  showWindow: () => ipcRenderer.invoke('window:show'),
+  toggleWindow: () => ipcRenderer.invoke('window:toggle'),
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
+  maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
+  isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
   
   // Event subscriptions
   onIndexingUpdate: (callback) => {
@@ -44,5 +49,10 @@ contextBridge.exposeInMainWorld('seeklyAPI', {
     const subscription = () => callback();
     ipcRenderer.on('window:shown', subscription);
     return () => ipcRenderer.removeListener('window:shown', subscription);
+  },
+  onWindowMaximized: (callback) => {
+    const subscription = (_event, isMax) => callback(isMax);
+    ipcRenderer.on('window:maximized', subscription);
+    return () => ipcRenderer.removeListener('window:maximized', subscription);
   }
 });

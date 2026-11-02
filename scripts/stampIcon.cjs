@@ -7,13 +7,13 @@
  */
 
 const path = require('path');
-const fs   = require('fs');
+const fs = require('fs');
 
 async function main() {
   const { rcedit } = require('rcedit');
 
-  const exePath  = path.resolve(__dirname, '../release/win-unpacked/Seekly.exe');
-  const icoPath  = path.resolve(__dirname, '../assets/branding/seekly-icon.ico');
+  const exePath = path.resolve(__dirname, '../release/win-unpacked/Seekly.exe');
+  const icoPath = path.resolve(__dirname, '../assets/branding/seekly-icon.ico');
 
   if (!fs.existsSync(exePath)) {
     console.warn('[stampIcon] Seekly.exe not found – skipping icon stamp.');
@@ -33,3 +33,4 @@ main().catch(err => {
   console.error('[stampIcon] Failed:', err.message);
   process.exit(1);
 });
+

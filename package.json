@@ -51,6 +51,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "assets/branding/seekly-icon.ico",
       "package.json"
     ],
     "win": {
@@ -58,7 +59,6 @@
         "nsis"
       ],
       "icon": "assets/branding/seekly-icon.ico",
-      "sign": null,
       "signAndEditExecutable": false
     },
     "nsis": {
